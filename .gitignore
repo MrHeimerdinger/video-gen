@@ -11,3 +11,13 @@ demos/*/out/stills/
 *.blend
 *.blend1
 *.npz
+
+# --- fork additions ---
+# fonts we ship (OFL): Noto Sans JP + Inter; every other font file stays ignored
+!assets/fonts/cjk/notosansjp/*.ttf
+!assets/fonts/latin/inter/*.ttf
+# local-only
+.tmp/
+.venv/
+demos/10-synthwave/assets/fonts/
+demos/*/out/check/

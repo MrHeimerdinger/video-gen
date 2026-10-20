@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<title>MDL STORE MAP — 27-mdl-map-vertical</title>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1080px;height:1920px;overflow:hidden;background:#D8E9F5}
+#stage{position:relative;width:1080px;height:1920px;overflow:hidden}
+#c{position:absolute;left:0;top:0;width:1080px;height:1920px;display:block}
+#ui,#arcs{position:absolute;left:0;top:0;width:1080px;height:1920px;pointer-events:none}
+.a{position:absolute;left:0;top:0}
+.jp{font-family:'Noto Sans JP',sans-serif}
+.in{font-family:'Inter',sans-serif}
+.pin{position:absolute;left:0;top:0;width:0;height:0}
+.pin .box{position:absolute;bottom:0}
+.card{display:flex;align-items:center;gap:16px;padding:14px 26px 14px 14px;background:#FFFFFF;border-radius:22px;
+  box-shadow:0 0 0 4px #FFFFFF,0 14px 30px rgba(40,60,90,.22);white-space:nowrap}
+.logo{width:64px;height:64px;border-radius:16px;background:#FF6B4A;display:flex;align-items:center;justify-content:center;
+  font:900 24px/1 Inter;color:#fff;letter-spacing:.02em;box-shadow:inset 0 -5px 0 rgba(0,0,0,.12)}
+.txt b{display:block;font:900 38px/1.05 'Noto Sans JP';color:#22303F}
+.txt i{display:block;font:700 15px/1 Inter;font-style:normal;letter-spacing:.2em;color:#8796A6;margin-top:7px}
+.stem{position:absolute;left:50%;width:4px;margin-left:-2px;background:#22303F;border-radius:2px}
+.tail{position:absolute;left:50%;width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-top:16px solid #fff;margin-left:-14px}
+</style>
+<script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js","three/addons/":"/node_modules/three/examples/jsm/"}}</script>
+</head>
+<body><div id="stage"><canvas id="c" width="1080" height="1920"></canvas><svg id="arcs" width="1080" height="1920"></svg><div id="ui"></div></div>
+<script type="module">
+import * as THREE from 'three';
+const ROOT='/demos/27-mdl-map-vertical/';
+const C=await fetch(ROOT+'cues.json').then(r=>r.json()), EV=C.ev;
+const JP=await fetch(ROOT+'assets/japan.json').then(r=>r.json());
+window.DEMO={width:1080,height:1920,fps:30,duration:C.duration};
+// ---------- helpers ----------
+const clamp=(x,a=0,b=1)=>x<a?a:x>b?b:x, lerp=(a,b,u)=>a+(b-a)*u, P=(t,a,d)=>clamp((t-a)/d);
+const oC=u=>1-Math.pow(1-u,3), oQ=u=>1-Math.pow(1-u,4), oX=u=>u>=1?1:1-Math.pow(2,-10*u), iQ=u=>u*u, ioS=u=>-(Math.cos(Math.PI*u)-1)/2,
+  ioC=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2, oB=(u,s=1.7)=>1+(s+1)*Math.pow(u-1,3)+s*Math.pow(u-1,2);
+function bez(x1,y1,x2,y2){return u=>{if(u<=0)return 0;if(u>=1)return 1;let t=u;for(let i=0;i<8;i++){const cx=3*x1*t*(1-t)**2+3*x2*t*t*(1-t)+t**3-u;const d=3*x1*(1-t)**2+6*(x2-x1)*t*(1-t)+3*(1-x2)*t*t;if(Math.abs(d)<1e-6)break;t=clamp(t-cx/d);}return 3*y1*t*(1-t)**2+3*y2*t*t*(1-t)+t**3;};}
+const eMove=bez(.6,0,.2,1);
+const wob=(dt,f=5,k=11)=>dt<0?0:Math.exp(-k*dt)*Math.cos(2*Math.PI*f*dt);
+function rng(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const R=rng(25);
+const el=(tag,cls,parent,css,html)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(css)e.style.cssText=css;if(html!=null)e.innerHTML=html;parent.appendChild(e);return e;};
+const UI=document.getElementById('ui'), ARCS=document.getElementById('arcs');
+const INK='#22303F', MID='#8796A6', CORAL='#FF6B4A';
+
+// ---------- geography → world ----------
+const LON0=137.5, LAT0=37.5, D2R=Math.PI/180;
+const merc=lat=>Math.log(Math.tan(Math.PI/4+lat*D2R/2))/D2R;
+const toW=(lon,lat)=>[lon-LON0, -(merc(lat)-merc(LAT0))];
+const rings=JP.rings.filter(r=>r.every(([x,y])=>x>128.3&&y>30.0));   // main islands + nearby islets (no Okinawa / Ogasawara)
+function inside(lon,lat){let c=false;for(const r of rings){for(let i=0,j=r.length-1;i<r.length;j=i++){const[xi,yi]=r[i],[xj,yj]=r[j];
+  if(((yi>lat)!==(yj>lat))&&(lon<(xj-xi)*(lat-yi)/(yj-yi)+xi))c=!c;}}return c;}
+// land grid (square cells in world space)
+const CELL=0.17, X0=128.6-LON0, X1=146.2-LON0, Z0=toW(0,46.0)[1], Z1=toW(0,30.2)[1];
+const NX=Math.ceil((X1-X0)/CELL), NZ=Math.ceil((Z1-Z0)/CELL);
+const zToLat=z=>2*Math.atan(Math.exp((merc(LAT0)-z)*D2R))/D2R-90;
+const grid=new Int32Array(NX*NZ).fill(-1), cells=[];
+for(let iz=0;iz<NZ;iz++)for(let ix=0;ix<NX;ix++){const x=X0+(ix+.5)*CELL,z=Z0+(iz+.5)*CELL,lon=x+LON0,lat=zToLat(z);
+  if(inside(lon,lat)){grid[iz*NX+ix]=cells.length;cells.push({ix,iz,x,z,lon,lat});}}
+// distance to coast (BFS) → terrain height, colour band
+const dist=new Int32Array(cells.length).fill(99);const Q=[];
+cells.forEach((c,i)=>{for(const[dx,dz]of[[1,0],[-1,0],[0,1],[0,-1]]){const jx=c.ix+dx,jz=c.iz+dz;if(jx<0||jz<0||jx>=NX||jz>=NZ||grid[jz*NX+jx]<0){dist[i]=0;Q.push(i);break;}}});
+for(let q=0;q<Q.length;q++){const i=Q[q],c=cells[i];for(const[dx,dz]of[[1,0],[-1,0],[0,1],[0,-1]]){const jx=c.ix+dx,jz=c.iz+dz;if(jx<0||jz<0||jx>=NX||jz>=NZ)continue;const j=grid[jz*NX+jx];if(j>=0&&dist[j]>dist[i]+1){dist[j]=dist[i]+1;Q.push(j);}}}
+const BAND=[0xF4E9CF,0xB9EBCF,0x9EE0C0,0x86D3B0,0x72C5A2,0xF2F6F8];
+cells.forEach((c,i)=>{const d=dist[i];const n=R();c.h=0.10+0.055*Math.min(d,6)+0.03*n+(d>=5?0.05*R():0);
+  c.col=d===0?BAND[0]:d<=1?BAND[1]:d<=2?BAND[2]:d<=3?BAND[3]:d<=5?BAND[4]:(c.lat>40.5&&d>=6?BAND[5]:BAND[4]);
+  // wave: ripples outward from Tokyo (first store of the tour)
+  const[ox,oz]=toW(...EV.land_origin);c.dw=Math.hypot(c.x-ox,c.z-oz);});
+const DMAX=Math.max(...cells.map(c=>c.dw));cells.forEach(c=>{c.t0=EV.land[0]+Math.pow(c.dw/DMAX,.85)*(EV.land[1]-EV.land[0]-EV.tile_dur)+R()*.12;});
+
+// ---------- three ----------
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(1);renderer.setSize(1080,1920,false);
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputColorSpace=THREE.SRGBColorSpace;renderer.toneMapping=THREE.NeutralToneMapping;renderer.toneMappingExposure=1.0;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0xD8E9F5);
+const VIEW_H=+(new URLSearchParams(location.search).get('vh')||22);
+const cam=new THREE.OrthographicCamera(-1,1,1,-1,-200,200);
+const EL=35.264*D2R, AZ=(+(new URLSearchParams(location.search).get('az')||-25))*D2R, DIR=new THREE.Vector3(Math.sin(AZ)*Math.cos(EL),Math.sin(EL),Math.cos(AZ)*Math.cos(EL));
+scene.add(new THREE.HemisphereLight(0xFFFFFF,0xB8CCE0,1.35));
+const sun=new THREE.DirectionalLight(0xFFF6EA,2.1);sun.position.set(-6,14,4);sun.castShadow=true;
+sun.shadow.mapSize.set(4096,4096);Object.assign(sun.shadow.camera,{left:-14,right:14,top:14,bottom:-14,near:-40,far:60});sun.shadow.bias=-0.0006;sun.shadow.radius=4;
+scene.add(sun);scene.add(sun.target);
+// sea + faint survey grid
+const gcv=document.createElement('canvas');gcv.width=gcv.height=256;{const g=gcv.getContext('2d');g.fillStyle='#BFDDF0';g.fillRect(0,0,256,256);g.strokeStyle='rgba(255,255,255,.55)';g.lineWidth=2;g.strokeRect(0,0,256,256);
+ g.fillStyle='rgba(255,255,255,.5)';g.beginPath();g.arc(0,0,4,0,7);g.fill();}
+const gtex=new THREE.CanvasTexture(gcv);gtex.wrapS=gtex.wrapT=THREE.RepeatWrapping;gtex.repeat.set(60,60);gtex.colorSpace=THREE.SRGBColorSpace;gtex.anisotropy=8;
+const sea=new THREE.Mesh(new THREE.PlaneGeometry(CELL*5*60,CELL*5*60),new THREE.MeshStandardMaterial({map:gtex,roughness:.95}));
+sea.rotation.x=-Math.PI/2;sea.receiveShadow=true;scene.add(sea);
+// land tiles
+const boxG=new THREE.BoxGeometry(1,1,1);boxG.translate(0,.5,0);
+const land=new THREE.InstancedMesh(boxG,new THREE.MeshStandardMaterial({roughness:.82,metalness:0}),cells.length);
+land.castShadow=land.receiveShadow=true;scene.add(land);
+const M=new THREE.Matrix4(),Qn=new THREE.Quaternion(),V=new THREE.Vector3(),S=new THREE.Vector3(),COL=new THREE.Color();
+cells.forEach((c,i)=>land.setColorAt(i,COL.set(c.col)));land.instanceColor.needsUpdate=true;
+const cellAt=(lon,lat)=>{const[x,z]=toW(lon,lat);const ix=Math.floor((x-X0)/CELL),iz=Math.floor((z-Z0)/CELL);let best=-1,bd=1e9;
+ for(let dz=-3;dz<=3;dz++)for(let dx=-3;dx<=3;dx++){const jx=ix+dx,jz=iz+dz;if(jx<0||jz<0||jx>=NX||jz>=NZ)continue;const j=grid[jz*NX+jx];if(j<0)continue;const d=dx*dx+dz*dz;if(d<bd){bd=d;best=j;}}return best;};
+// stores: shop building + ripple + DOM pin
+const shopMat={wall:new THREE.MeshStandardMaterial({color:0xFFF8EF,roughness:.7}),roof:new THREE.MeshStandardMaterial({color:0xFF6B4A,roughness:.6}),
+ door:new THREE.MeshStandardMaterial({color:0x22303F,roughness:.6}),glass:new THREE.MeshStandardMaterial({color:0x9FD3F2,roughness:.3})};
+const STORES=C.stores.map((s,k)=>{const ci=cellAt(s.lon,s.lat),c=cells[ci];c.store=true;
+ const g=new THREE.Group();const top=c.h;g.position.set(c.x,top,c.z);
+ const add=(geo,mat,x,y,z)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.castShadow=true;m.receiveShadow=true;g.add(m);return m;};
+ add(new THREE.BoxGeometry(.36,.28,.3),shopMat.wall,0,.14,0);
+ add(new THREE.BoxGeometry(.42,.06,.36),shopMat.roof,0,.31,0);
+ add(new THREE.BoxGeometry(.4,.035,.1),shopMat.roof,0,.215,.19).rotation.x=.35;
+ add(new THREE.BoxGeometry(.09,.15,.012),shopMat.door,-.07,.075,.151);
+ add(new THREE.BoxGeometry(.12,.09,.012),shopMat.glass,.08,.1,.151);
+ g.scale.set(1,0.0001,1);scene.add(g);
+ const ring=new THREE.Mesh(new THREE.RingGeometry(.3,.36,48),new THREE.MeshBasicMaterial({color:0xFF6B4A,transparent:true,opacity:0,depthWrite:false}));
+ ring.rotation.x=-Math.PI/2;ring.position.set(c.x,top+.004,c.z);scene.add(ring);
+ // DOM pin
+ const pin=el('div','pin',UI,'');const box=el('div','box',pin,'');
+ box.innerHTML=`<div class="card"><div class="logo">MDL</div><div class="txt"><b>${s.jp}</b><i>${s.en}</i></div></div><div class="tail" style="top:100%;left:${s.ax}%"></div>`;
+ const stemE=el('div','stem',pin,'bottom:0;height:0');
+ return {...s,c,g,ring,pin,box,stemE,top,anchor:new THREE.Vector3(c.x,top+.34,c.z),k};});
+
+// ---------- camera ----------
+function camAt(t){const K=C.cam;if(t<=K[0].t)return K[0];
+ for(let i=1;i<K.length;i++){const a=K[i-1],b=K[i];if(t>b.t)continue;const u=(t-a.t)/(b.t-a.t),e=b.m==='move'?eMove(u):ioS(u);
+  return{lon:lerp(a.lon,b.lon,e),lat:lerp(a.lat,b.lat,e),z:Math.exp(lerp(Math.log(a.z),Math.log(b.z),e))};}
+ return K[K.length-1];}
+function setCam(t){const qc=new URLSearchParams(location.search).get('cam');const k=qc?(([lon,lat,z])=>({lon,lat,z}))(qc.split(',').map(Number)):camAt(t);const[x,z]=toW(k.lon,k.lat);const T=new THREE.Vector3(x,0,z);
+ cam.position.copy(T).addScaledVector(DIR,60);cam.up.set(0,1,0);cam.lookAt(T);
+ const h=VIEW_H/k.z/2,w=h*9/16;cam.left=-w;cam.right=w;cam.top=h;cam.bottom=-h;cam.updateProjectionMatrix();cam.updateMatrixWorld();
+ sun.target.position.copy(T);sun.position.copy(T).add(new THREE.Vector3(-6,14,4));sun.target.updateMatrixWorld();}
+const proj=v=>{const p=v.clone().project(cam);return[(p.x+1)*540,(1-p.y)*960];};
+
+// ---------- UI: titles + store counter ----------
+const kick=el('div','a jp',UI,`left:80px;top:150px;font:700 30px/1 'Noto Sans JP';color:${INK};white-space:nowrap`,
+ `<span style="display:inline-block;width:22px;height:22px;border-radius:6px;background:${CORAL};margin-right:16px;vertical-align:-2px"></span>MDL<span style="font:600 20px Inter;letter-spacing:.2em;color:${MID};margin-left:18px">STORE MAP · JAPAN</span>`);
+const tMask=el('div','a',UI,'left:70px;top:194px;width:900px;height:150px;overflow:hidden');
+const tLine=el('div','a jp',tMask,`left:10px;top:0;font:900 118px/1.2 'Noto Sans JP';color:${INK};white-space:nowrap;letter-spacing:-.01em`,'店舗マップ');
+const sub=el('div','a jp',UI,`left:82px;top:354px;font:500 32px/1.4 'Noto Sans JP';color:#4F6070;white-space:nowrap`,'MDLの店舗がある街を、地図でご紹介します');
+const chip=el('div','a',UI,`left:80px;top:1560px;display:flex;align-items:center;gap:18px;padding:16px 28px 16px 18px;border-radius:18px;background:rgba(255,255,255,.92);box-shadow:0 10px 26px rgba(40,60,90,.16);white-space:nowrap`);
+const chipN=el('div','in',chip,`font:800 22px/1 Inter;color:#fff;background:${INK};border-radius:10px;padding:10px 12px;letter-spacing:.06em`,'01');
+const chipT=el('div','jp',chip,`font:900 34px/1 'Noto Sans JP';color:${INK}`,'');
+const chipE=el('div','in',chip,`font:700 16px/1 Inter;color:${MID};letter-spacing:.2em`,'');
+const list=el('div','a jp',UI,`left:82px;top:358px;font:900 44px/1.4 'Noto Sans JP';color:${INK};white-space:nowrap`,
+ C.stores.map(s=>`<span class="li" style="display:inline-block;margin-right:26px"><span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${CORAL};margin-right:12px;vertical-align:6px"></span>${s.jp}</span>`).join(''));
+const LI=[...list.querySelectorAll('.li')];
+
+// ---------- arcs (store network) ----------
+const NS='http://www.w3.org/2000/svg';
+const arcOrder=[0,1,2,3];   // Tokyo → Osaka → Fukuoka → Kagoshima (tour order)
+const arcEls=arcOrder.slice(0,-1).map((_,i)=>{const p=document.createElementNS(NS,'path');p.setAttribute('fill','none');p.setAttribute('stroke',CORAL);p.setAttribute('stroke-width','5');
+ p.setAttribute('stroke-linecap','round');ARCS.appendChild(p);return p;});
+
+// ---------- frame ----------
+await Promise.all([document.fonts.load("900 118px 'Noto Sans JP'",'店舗マップ東京大阪福岡鹿児島'),document.fonts.load("700 30px 'Noto Sans JP'",'MDL'),
+ document.fonts.load("500 32px 'Noto Sans JP'",'の店舗がある街を、地図でご紹介します'),document.fonts.load("900 24px Inter",'MDL0123456789'),
+ document.fonts.load("700 15px Inter",'KAGOSHIMA FUKUOKA OSAKA TOKYO'),document.fonts.load("600 20px Inter",'STORE MAP JAPAN')]);
+await document.fonts.ready;
+
+window.renderAt=async t=>{
+ setCam(t);
+ // tiles drop + settle
+ for(let i=0;i<cells.length;i++){const c=cells[i];const u=P(t,c.t0,EV.tile_dur);
+  let y=0,sy=1,s=1;if(u<=0){s=0.0001;sy=0.0001;}else if(u<1){const e=oC(u);y=(1-e)*1.4;sy=lerp(.3,1,oB(u,1.6));s=lerp(.6,1,oC(Math.min(1,u*1.6)));}
+  // store cell bumps when its shop lands
+  if(c.store){const st=STORES.find(o=>o.c===c);y+=-.03*wob(t-st.pop+EV.grow_lead*.2,5,12);}
+  V.set(c.x,y,c.z);S.set(CELL*.93*s,c.h*sy,CELL*.93*s);M.compose(V,Qn,S);land.setMatrixAt(i,M);}
+ land.instanceMatrix.needsUpdate=true;
+ // stores
+ STORES.forEach(o=>{const g0=o.pop-EV.grow_lead,u=P(t,g0,.32);o.g.scale.set(1,u<=0?0.0001:oB(u,2.2),1);o.g.visible=u>0;
+  const r=P(t,g0+.1,.7);o.ring.material.opacity=r>0&&r<1?.85*(1-r):0;const rs=lerp(.4,3.2,oC(r));o.ring.scale.set(rs,rs,rs);
+  const[px,py]=proj(o.anchor);o.pin.style.transform=`translate(${px}px,${py}px)`;
+  const pu=P(t,o.pop,.42),stemH=lerp(0,o.stem,oC(P(t,o.pop-.05,.22)));o.stemE.style.height=stemH+'px';o.stemE.style.opacity=pu>0||stemH>0?1:0;
+  const bob=Math.sin((t-o.pop)*2.4+o.k)*4*oC(P(t,o.pop+.5,.6));
+  const sc=pu<=0?0:oB(pu,2.6);o.box.style.opacity=pu>0?1:0;o.box.style.transformOrigin=`${o.ax}% 100%`;o.box.style.bottom=(stemH+14+bob)+'px';
+  o.box.style.transform=`translateX(-${o.ax}%) scale(${sc}) rotate(${(1-oC(pu))*(o.side*-8)}deg)`;});
+ // titles
+ const tk=oC(P(t,EV.kicker,.4)),tt=P(t,EV.title,.55),ts=oC(P(t,EV.sub,.45));const[to,td]=EV.title_out,out=oC(P(t,to,td)),back=oC(P(t,EV.end_kicker,.4));
+ const vis=Math.max(1-out,back);
+ kick.style.opacity=tk*vis;kick.style.transform=`translateY(${(1-tk)*16}px)`;
+ const inn=t<EV.end_title-.05?oX(tt)*(1-out):oX(P(t,EV.end_title,.55));tLine.style.transform=`translateY(${(1-inn)*150}px)`;
+ sub.style.opacity=ts*(1-out);sub.style.transform=`translateY(${(1-ts)*14}px)`;
+ LI.forEach((e,i)=>{const q=oC(P(t,EV.end_list+i*.08,.4));e.style.opacity=q;e.style.transform=`translateY(${(1-q)*16}px)`;});
+ // store counter chip during the tour
+ const cur=[...STORES].filter(o=>t>=o.pop-.05).pop();const ci=oC(P(t,STORES[0].pop-.05,.35))*(1-oC(P(t,EV.chip_out,.3)));
+ chip.style.opacity=ci;chip.style.transform=`translateY(${(1-oC(P(t,STORES[0].pop-.05,.35)))*30}px)`;
+ if(cur){chipN.textContent=String(cur.k+1).padStart(2,'0')+' / 04';chipT.textContent=cur.jp;chipE.textContent=cur.en;
+  const kk=wob(t-cur.pop,4,10);chip.style.transform+=` scale(${1+.04*kk})`;}
+ // network arcs
+ const[a0,ast,ad]=EV.arcs;
+ arcEls.forEach((p,i)=>{const A=STORES[arcOrder[i]],B=STORES[arcOrder[i+1]];const[x1,y1]=proj(A.anchor),[x2,y2]=proj(B.anchor);
+  const mx=(x1+x2)/2,my=(y1+y2)/2-Math.hypot(x2-x1,y2-y1)*.28;
+  p.setAttribute('d',`M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}`);
+  const u=oC(P(t,a0+i*ast,ad));p.setAttribute('pathLength','1');p.style.strokeDasharray='1 1';p.style.strokeDashoffset=String(1-u);p.style.opacity=u>0?1:0;});
+ renderer.render(scene,cam);
+};
+await window.renderAt(0);
+window.__ready=true;
+</script></body></html>

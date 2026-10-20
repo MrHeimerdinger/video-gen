@@ -1,0 +1,25 @@
+{
+ "fps": 30,
+ "duration": 30,
+ "bpm": 104,
+ "note": "Vertical 1080x1920 version of 24-ssd-ja-30s (same 30 s timing). Sections stacked top to bottom, 2000 px apart; camera flies straight down.",
+ "cam": [
+  {"t": 0.0,  "x": 540, "y": 960,  "z": 1.0},
+  {"t": 4.2,  "x": 540, "y": 960,  "z": 1.025, "m": "drift"},
+  {"t": 5.7,  "x": 540, "y": 2960, "z": 1.0,  "m": "fly", "dip": 0.45},
+  {"t": 10.6, "x": 540, "y": 2960, "z": 1.025, "m": "drift"},
+  {"t": 12.1, "x": 540, "y": 4960, "z": 1.0,  "m": "fly", "dip": 0.45},
+  {"t": 17.8, "x": 540, "y": 4960, "z": 1.025, "m": "drift"},
+  {"t": 19.3, "x": 540, "y": 6960, "z": 1.0,  "m": "fly", "dip": 0.45},
+  {"t": 24.0, "x": 540, "y": 6960, "z": 1.025, "m": "drift"},
+  {"t": 25.6, "x": 540, "y": 3980, "z": 0.235, "m": "pull"},
+  {"t": 30.0, "x": 540, "y": 3980, "z": 0.228, "m": "drift"}
+ ],
+ "ev": {"ssd_land": 0.4, "title1": 0.16, "title2": 0.52, "kicker": 1.0, "marker": [1.6, 2.2], "sub": 1.9, "note": 2.2,
+  "fly1": [4.2, 5.7], "b_head": 4.5, "b_cap": 4.8, "grow": [5.9, 7.2], "sys_slam": 7.9, "icons": [8.2, 8.4, 8.6],
+  "count_down": [8.1, 9.1], "usable": 9.2, "b_sub": 9.6,
+  "fly2": [10.6, 12.1], "c_head": 10.9, "c_cap": 11.2, "games": [12.9, 13.7, 14.5], "files": 15.4, "stamp": 16.3,
+  "fly3": [17.8, 19.3], "d_head": 18.0, "d_cap": 18.3, "rows": [19.5, 19.9, 20.3], "row_dur": 1.1, "icon_delay": 0.9, "icon_step": 0.07,
+  "reco": [22.4, 22.64],
+  "pull": [24.0, 25.6], "card": 25.9, "end1": 26.16, "end2": 26.44, "end_cap": 26.9, "marker_end": [26.8, 27.4]}
+}

@@ -1,0 +1,30 @@
+{
+ "fps": 30,
+ "duration": 15,
+ "bpm": 120,
+ "note": "SSD capacity explainer (style 07 sticker explainer). All times in seconds; read by index.html and audio.py.",
+ "cam": [
+  {"t": 0.0,  "x": 1150, "y": 700,  "z": 1.0},
+  {"t": 2.1,  "x": 1150, "y": 700,  "z": 1.03, "m": "drift"},
+  {"t": 2.85, "x": 1100, "y": 1930, "z": 1.0,  "m": "fly", "dip": 0.45},
+  {"t": 5.3,  "x": 1100, "y": 1930, "z": 1.03, "m": "drift"},
+  {"t": 6.05, "x": 1100, "y": 3100, "z": 1.0,  "m": "fly", "dip": 0.45},
+  {"t": 8.9,  "x": 1100, "y": 3100, "z": 1.03, "m": "drift"},
+  {"t": 9.65, "x": 3290, "y": 2500, "z": 1.0,  "m": "fly", "dip": 0.5},
+  {"t": 12.0, "x": 3290, "y": 2500, "z": 1.03, "m": "drift"},
+  {"t": 12.8, "x": 2200, "y": 1960, "z": 0.37, "m": "pull"},
+  {"t": 15.0, "x": 2200, "y": 1960, "z": 0.355, "m": "drift"}
+ ],
+ "ev": {
+  "ssd_land": 0.2, "title1": 0.08, "title2": 0.26, "kicker": 0.5, "marker": [0.8, 1.1], "sub": 0.95, "note": 1.1,
+  "fly1": [2.1, 2.85],
+  "b_head": 2.25, "b_cap": 2.4, "grow": [2.95, 3.6], "sys_slam": 3.95, "icons": [4.1, 4.2, 4.3],
+  "count_down": [4.05, 4.55], "usable": 4.6, "b_sub": 4.8,
+  "fly2": [5.3, 6.05],
+  "c_head": 5.45, "c_cap": 5.6, "games": [6.45, 6.85, 7.25], "files": 7.7, "stamp": 8.15,
+  "fly3": [8.9, 9.65],
+  "d_head": 9.0, "d_cap": 9.15, "rows": [9.75, 9.95, 10.15], "row_dur": 0.55, "icon_delay": 0.45, "icon_step": 0.035,
+  "reco": [11.2, 11.32],
+  "pull": [12.0, 12.8], "card": 12.95, "end1": 13.08, "end2": 13.22, "end_cap": 13.45, "marker_end": [13.4, 13.7]
+ }
+}

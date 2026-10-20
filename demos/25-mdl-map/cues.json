@@ -1,0 +1,31 @@
+{
+ "fps": 30,
+ "duration": 10,
+ "bpm": 120,
+ "note": "MDL store map (style 02 isometric). Camera keys: lon/lat target + zoom. All times in seconds; read by index.html and audio.py.",
+ "cam": [
+  {"t": 0.0,  "lon": 136.4, "lat": 38.5, "z": 1.0},
+  {"t": 2.5,  "lon": 136.4, "lat": 38.5, "z": 1.06},
+  {"t": 3.25, "lon": 131.3, "lat": 33.5, "z": 1.9, "m": "move"},
+  {"t": 4.45, "lon": 131.2, "lat": 33.6, "z": 1.96},
+  {"t": 5.15, "lon": 135.5, "lat": 34.7, "z": 2.2, "m": "move"},
+  {"t": 5.75, "lon": 135.5, "lat": 34.75, "z": 2.26},
+  {"t": 6.35, "lon": 139.6, "lat": 35.75, "z": 2.2, "m": "move"},
+  {"t": 6.95, "lon": 139.6, "lat": 35.8, "z": 2.26},
+  {"t": 7.85, "lon": 136.2, "lat": 38.3, "z": 1.04, "m": "move"},
+  {"t": 10.0, "lon": 136.2, "lat": 38.3, "z": 1.07}
+ ],
+ "stores": [
+  {"key": "kagoshima", "jp": "鹿児島", "en": "KAGOSHIMA", "lon": 130.56, "lat": 31.6,  "pop": 3.45, "side": -1, "ax": 86, "stem": 46},
+  {"key": "fukuoka",   "jp": "福岡",   "en": "FUKUOKA",   "lon": 130.4,  "lat": 33.59, "pop": 4.05, "side": -1, "ax": 50, "stem": 120},
+  {"key": "osaka",     "jp": "大阪",   "en": "OSAKA",     "lon": 135.5,  "lat": 34.69, "pop": 5.3,  "side": 1, "ax": 50, "stem": 62},
+  {"key": "tokyo",     "jp": "東京",   "en": "TOKYO",     "lon": 139.76, "lat": 35.68, "pop": 6.45, "side": 1, "ax": 50, "stem": 62}
+ ],
+ "ev": {
+  "land": [0.12, 2.2], "tile_dur": 0.42,
+  "kicker": 0.35, "title": 0.45, "sub": 0.75, "title_out": [2.45, 0.3],
+  "grow_lead": 0.28,
+  "arcs": [7.95, 0.2, 0.45],
+  "end_kicker": 7.9, "end_title": 8.0, "end_list": 8.25
+ }
+}

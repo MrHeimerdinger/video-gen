@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:#E9EEF2}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;background:#E9EEF2}
+#world{position:absolute;left:0;top:0;width:4400px;height:3800px;transform-origin:0 0}
+#dots{position:absolute;left:-3000px;top:-3000px;width:10400px;height:9800px;
+  background-image:radial-gradient(circle,#C5CFD8 2.3px,transparent 2.9px);background-size:48px 48px}
+.a{position:absolute;left:0;top:0}
+.jp{font-family:'Noto Sans JP',sans-serif}
+.in{font-family:'Inter',sans-serif;font-feature-settings:'tnum' 1}
+.mask{position:absolute;overflow:hidden}
+.stk{position:absolute;left:0;top:0;transform-origin:50% 50%}
+#dim,#hud{position:absolute;left:0;top:0;width:1920px;height:1080px;pointer-events:none}
+</style></head>
+<body><div id="stage">
+  <div id="world"><div id="dots"></div></div>
+  <div id="dim"></div>
+  <div id="hud"></div>
+</div>
+<script type="module">
+const ROOT='/demos/24-ssd-ja-30s/';
+const C=await fetch(ROOT+'cues.json').then(r=>r.json()); const EV=C.ev, CAM=C.cam;
+window.DEMO={width:1920,height:1080,fps:30,duration:C.duration};
+// ---------- helpers ----------
+const clamp=(x,a=0,b=1)=>x<a?a:x>b?b:x, lerp=(a,b,u)=>a+(b-a)*u, P=(t,a,d)=>clamp((t-a)/d);
+const oC=u=>1-Math.pow(1-u,3), oQ=u=>1-Math.pow(1-u,4), oX=u=>u>=1?1:1-Math.pow(2,-10*u), iQ=u=>u*u,
+  ioC=u=>u<.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2, ioS=u=>-(Math.cos(Math.PI*u)-1)/2,
+  oB=(u,s=1.7)=>1+(s+1)*Math.pow(u-1,3)+s*Math.pow(u-1,2);
+function bez(x1,y1,x2,y2){return u=>{if(u<=0)return 0;if(u>=1)return 1;let t=u;for(let i=0;i<8;i++){const cx=3*x1*t*(1-t)**2+3*x2*t*t*(1-t)+t**3-u;const d=3*x1*(1-t)**2+6*(x2-x1)*t*(1-t)+3*(1-x2)*t*t;if(Math.abs(d)<1e-6)break;t=clamp(t-cx/d);}return 3*y1*t*(1-t)**2+3*y2*t*t*(1-t)+t**3;};}
+const eFly=bez(.62,0,.22,1), ePull=bez(.5,0,.08,1);
+const wob=(dt,f=5,k=11)=>dt<0?0:Math.exp(-k*dt)*Math.cos(2*Math.PI*f*dt);
+const mixc=(a,b,u)=>{const A=a.match(/\w\w/g).map(h=>parseInt(h,16)),B=b.match(/\w\w/g).map(h=>parseInt(h,16));return`rgb(${A.map((v,i)=>Math.round(lerp(v,B[i],u))).join(',')})`;};
+const INK='#25313D', MID='#8C9AA8', SUB='#5E6D7B', CARD='#F7F9FB', LINE='#CDD6DE', BLUE='#3D7BE0', OR='#FF5A36', SLATE='#D3DCE4';
+const W=document.getElementById('world'), HUD=document.getElementById('hud'), DIM=document.getElementById('dim');
+const el=(tag,cls,parent,css,html)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(css)e.style.cssText=css;if(html!=null)e.innerHTML=html;(parent||W).appendChild(e);return e;};
+const U=[];
+const shadow=(lift,a=.26)=>`drop-shadow(0 ${6+34*lift}px ${10+34*lift}px rgba(22,34,46,${(a-0.08*lift).toFixed(3)}))`;
+// sticker slap: falls in from above the paper, lands, wobbles
+function slap(t,land,dur=.22,amp=.3){const p=(t-(land-dur))/dur;if(p<0)return{o:0,s:1+amp,r:6,lift:1};
+  if(p<1){const L=1-iQ(p);return{o:clamp(p*5),s:1+amp*L,r:6*L,lift:L};}
+  const w=wob(t-land,4.5,10);return{o:1,s:1-.035*w,r:-.8*w,lift:0};}
+const fadeUp=(e,t,a,dy=18,d=.38)=>{const k=oC(P(t,a,d));e.style.opacity=k;e.style.transform=`translateY(${(1-k)*dy}px)`;};
+const revealUp=(inner,t,a,h,d=.5)=>{inner.style.transform=`translateY(${(1-oX(P(t,a,d)))*h}px)`;};
+function kicker(x,y,txt,en,parent=W){return el('div','a jp',parent,`left:${x}px;top:${y}px;font:700 32px/1 'Noto Sans JP';color:${INK};white-space:nowrap`,
+  `<span style="display:inline-block;width:22px;height:22px;background:${OR};margin-right:16px;vertical-align:-2px"></span>${txt}<span style="font:600 22px Inter;letter-spacing:.18em;color:${MID};margin-left:20px">${en}</span>`);}
+function maskLine(x,y,w,h,css,html,parent=W){const m=el('div','mask',parent,`left:${x-10}px;top:${y}px;width:${w}px;height:${h}px`);const i=el('div','a jp',m,`left:10px;top:0;white-space:nowrap;${css}`,html);return{m,i};}
+const fmt=n=>String(Math.round(n));
+
+// ---------- sticker art (white die-cut outline + art) ----------
+const OUT=`fill="#F7F9FB" stroke="#F7F9FB" stroke-linejoin="round"`;
+const ssdSVG=`<svg viewBox="-30 -30 860 280" width="860" height="280" style="overflow:visible">
+ <rect x="0" y="0" width="800" height="220" rx="14" ${OUT} stroke-width="40"/>
+ <rect x="0" y="0" width="800" height="220" rx="14" fill="#1E5E3E"/>
+ <g fill="none" stroke="#2F7E55" stroke-width="3" opacity=".9">
+  <path d="M200 70 H240 L252 58 M200 110 H250 M200 150 H240 L252 162 M450 60 H475 M450 110 H480 M450 160 H475 M670 70 H720 L735 85 M670 150 H720 L735 135 M40 40 H70 M40 180 H70"/></g>
+ <circle cx="0" cy="110" r="24" fill="#F7F9FB"/><circle cx="0" cy="110" r="13" fill="#B9C3CC"/>
+ <g fill="#D9B45B">${[...Array(13)].map((_,i)=>{const y=16+i*15;return (y>136&&y<160)?'':`<rect x="742" y="${y}" width="58" height="9" rx="2"/>`;}).join('')}</g>
+ <rect x="80" y="52" width="116" height="116" rx="8" fill="#14181D"/><rect x="80" y="52" width="116" height="116" rx="8" fill="none" stroke="#39424C" stroke-width="2"/>
+ <circle cx="96" cy="68" r="5" fill="#2A3138"/>
+ <rect x="252" y="28" width="196" height="164" rx="8" fill="#14181D"/><rect x="470" y="28" width="196" height="164" rx="8" fill="#14181D"/>
+ <rect x="262" y="62" width="394" height="96" rx="8" fill="#F7F9FB"/>
+ <text x="290" y="114" font-family="Inter" font-weight="900" font-size="46" fill="#25313D" letter-spacing="2">VELO</text>
+ <rect x="436" y="80" width="200" height="34" rx="6" fill="#FF5A36"/>
+ <text x="536" y="104" font-family="Inter" font-weight="800" font-size="22" fill="#fff" text-anchor="middle" letter-spacing="1">NVMe SSD</text>
+ <text x="290" y="143" font-family="Inter" font-weight="600" font-size="19" fill="#5E6D7B" letter-spacing="2">M.2 2280 · 500GB</text>
+</svg>`;
+const osSVG=`<svg viewBox="-90 -76 180 152" width="180" height="152" style="overflow:visible">
+ <rect x="-76" y="-60" width="152" height="120" rx="16" ${OUT} stroke-width="26"/>
+ <rect x="-76" y="-60" width="152" height="120" rx="16" fill="#25313D"/>
+ <circle cx="-56" cy="-42" r="6" fill="#FF5A36"/><circle cx="-38" cy="-42" r="6" fill="#8C9AA8"/><circle cx="-20" cy="-42" r="6" fill="#8C9AA8"/>
+ <rect x="-62" y="-26" width="124" height="74" rx="8" fill="#3D7BE0"/>
+ <text x="0" y="26" font-family="Inter" font-weight="900" font-size="46" fill="#fff" text-anchor="middle">OS</text></svg>`;
+const buoySVG=`<svg viewBox="-80 -80 160 160" width="160" height="160" style="overflow:visible">
+ <circle r="64" ${OUT} stroke-width="26"/>
+ <circle r="64" fill="#FF5A36"/>
+ <g fill="#F7F9FB">${[0,90,180,270].map(a=>`<path d="M 0 0 L ${64*Math.cos((a-20)*Math.PI/180)} ${64*Math.sin((a-20)*Math.PI/180)} A 64 64 0 0 1 ${64*Math.cos((a+20)*Math.PI/180)} ${64*Math.sin((a+20)*Math.PI/180)} Z"/>`).join('')}</g>
+ <circle r="30" fill="#E9EEF2"/><circle r="30" fill="none" stroke="#25313D" stroke-width="5"/><circle r="64" fill="none" stroke="#25313D" stroke-width="5"/></svg>`;
+const updSVG=`<svg viewBox="-80 -80 160 160" width="160" height="160" style="overflow:visible">
+ <circle r="62" ${OUT} stroke-width="26"/>
+ <circle r="62" fill="#25313D"/>
+ <g fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round"><path d="M -34 -12 A 36 36 0 0 1 30 -20"/><path d="M 34 12 A 36 36 0 0 1 -30 20"/></g>
+ <path d="M 18 -40 L 42 -18 L 12 -10 Z" fill="#fff"/><path d="M -18 40 L -42 18 L -12 10 Z" fill="#fff"/></svg>`;
+const PAD='M -50 -24 H 50 A 34 34 0 0 1 83 4 L 90 36 A 20 20 0 0 1 56 52 L 34 28 H -34 L -56 52 A 20 20 0 0 1 -90 36 L -83 4 A 34 34 0 0 1 -50 -24 Z';
+const padGlyph=(col,hole)=>`<path d="${PAD}" fill="${col}"/><rect x="-60" y="-4" width="34" height="11" rx="3" fill="${hole}"/><rect x="-48" y="-16" width="11" height="34" rx="3" fill="${hole}"/><circle cx="44" cy="-6" r="7" fill="${hole}"/><circle cx="58" cy="8" r="7" fill="${hole}"/>`;
+const padSVG=(w,col,hole)=>`<svg viewBox="-96 -40 192 100" width="${w}" height="${w*100/192}" style="overflow:visible">${padGlyph(col,hole)}</svg>`;
+const folderGlyph=`<path d="M -60 -40 H -18 L -6 -28 H 60 A 8 8 0 0 1 68 -20 V 40 A 8 8 0 0 1 60 48 H -60 A 8 8 0 0 1 -68 40 V -32 A 8 8 0 0 1 -60 -40 Z" fill="#fff"/>
+ <path d="M -44 34 L -16 4 L 4 24 L 18 12 L 44 34 Z" fill="#6E7F92"/><circle cx="26" cy="-6" r="9" fill="#6E7F92"/>`;
+
+// ---------- camera ----------
+function camAt(t){if(t<=CAM[0].t)return{...CAM[0]};
+ for(let i=1;i<CAM.length;i++){const a=CAM[i-1],b=CAM[i];if(t>b.t)continue;const u=(t-a.t)/(b.t-a.t);
+  if(b.m==='fly'){const e=eFly(u);return{x:lerp(a.x,b.x,e),y:lerp(a.y,b.y,e),z:Math.exp(lerp(Math.log(a.z),Math.log(b.z),e))*(1-(b.dip||.15)*Math.sin(Math.PI*e))};}
+  if(b.m==='pull'){const e=ePull(u);return{x:lerp(a.x,b.x,e),y:lerp(a.y,b.y,e),z:Math.exp(lerp(Math.log(a.z),Math.log(b.z),e))};}
+  const e=ioS(u);return{x:lerp(a.x,b.x,e),y:lerp(a.y,b.y,e),z:lerp(a.z,b.z,e)};}
+ return{...CAM[CAM.length-1]};}
+const jolt=t=>7*wob(t-EV.ssd_land,4,15)+5*wob(t-EV.sys_slam,4,16)+3*(wob(t-EV.games[0],4,18)+wob(t-EV.games[1],4,18)+wob(t-EV.games[2],4,18))+10*wob(t-EV.stamp,4,14)+5*wob(t-EV.reco[0],4,16);
+
+// =========================================================== A: title
+const A={x:330};
+const aK=kicker(A.x,400,'PCパーツ解説','STORAGE · NO.01');
+const aL1=maskLine(A.x,450,1100,170,`font:900 132px/1.2 'Noto Sans JP';color:${INK};letter-spacing:-.01em`,'SSDの容量、');
+const aL2=maskLine(A.x,620,1180,180,`font:900 132px/1.2 'Noto Sans JP';color:${INK};letter-spacing:-.01em`,'全部は使えない？');
+const aMark=el('div','a',aL2.m,`left:10px;top:128px;height:30px;width:264px;background:${OR};transform-origin:0 50%`);
+aL2.m.insertBefore(aMark,aL2.i);
+const aSub=el('div','a in',W,`left:${A.x}px;top:840px;font:600 28px/1 Inter;letter-spacing:.14em;color:${MID};white-space:nowrap`,'WHY YOUR SSD NEVER SHOWS ITS FULL SIZE');
+const aRule=el('div','a',W,`left:${A.x}px;top:900px;width:640px;height:3px;background:${INK};transform-origin:0 50%`);
+const aNote=el('div','a jp',W,`left:${A.x}px;top:928px;font:500 30px/1.5 'Noto Sans JP';color:${SUB};white-space:nowrap`,'500GB・1TB・2TB、どれを選べばいい？');
+const ssd=el('div','stk',W,'width:860px;height:280px;z-index:20',ssdSVG);
+const SSD0={x:1660,y:650,s:.68,r:-14};
+U.push(t=>{
+ fadeUp(aK,t,EV.kicker);revealUp(aL1.i,t,EV.title1,170);revealUp(aL2.i,t,EV.title2,180);
+ aMark.style.transform=`scaleX(${ioC(P(t,EV.marker[0],EV.marker[1]-EV.marker[0]))})`;
+ const s=oC(P(t,EV.sub,.4));aSub.style.opacity=s;aSub.style.transform=`translateX(${(1-s)*-30}px)`;
+ aRule.style.transform=`scaleX(${oQ(P(t,EV.sub+.08,.5))})`;fadeUp(aNote,t,EV.note,14);
+ const sl=slap(t,EV.ssd_land,.24,.35),fl=oC(P(t,.5,.6)),fy=Math.sin((t-.5)*2.4)*8*fl,fr=Math.sin((t-.5)*1.9+.4)*1.2*fl;
+ ssd.style.opacity=sl.o;ssd.style.transform=`translate(${SSD0.x-430}px,${SSD0.y-140-fy-260*sl.lift}px) rotate(${SSD0.r+sl.r*2+fr}deg) scale(${SSD0.s*sl.s})`;
+ ssd.style.filter=shadow(Math.max(sl.lift,.12*fl*(.5+.5*Math.sin((t-.5)*2.4))));
+});
+
+// =========================================================== B: system data
+const B={x0:260,y:1850,w:1500,h:130,gb:3};   // 3 px per GB: 500 GB = 1500 px
+const SYS_B=90, USE_B=410;
+const bK=kicker(B.x0,1440,'01　中身は空っぽじゃない','SYSTEM DATA');
+const bCap=maskLine(B.x0,1500,1560,96,`font:900 64px/1.4 'Noto Sans JP';color:${INK}`,'SSDには、最初から<span style="color:'+OR+'">システムデータ</span>が入っている');
+const bBar=el('div','a',W,`left:${B.x0}px;top:${B.y}px;width:${B.w}px;height:${B.h}px;border-radius:18px;background:${CARD};box-shadow:inset 0 0 0 3px ${LINE};overflow:hidden;z-index:5`);
+const bFill=el('div','a',bBar,`left:0;top:0;width:${B.w}px;height:${B.h}px;background:${SLATE};transform-origin:0 50%`);
+const bUse=el('div','a',bBar,`left:${SYS_B*B.gb}px;top:0;width:${USE_B*B.gb}px;height:${B.h}px;background:${BLUE};opacity:0`);
+const bUseT=el('div','a jp',bBar,`left:${SYS_B*B.gb}px;top:0;width:${USE_B*B.gb}px;height:${B.h}px;display:flex;align-items:center;justify-content:center;gap:22px;color:#fff;font:900 52px/1 'Noto Sans JP';white-space:nowrap;opacity:0`,
+ `実際に使える部分`);
+const bSys=el('div','a',bBar,`left:0;top:0;width:${SYS_B*B.gb}px;height:${B.h}px;background:${INK};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#fff`,
+ `<span class="jp" style="font:900 36px/1 'Noto Sans JP'">システム</span><span class="in" style="font:700 28px/1 Inter;color:#C5CFD8">約90GB</span>`);
+const bTick0=el('div','a in',W,`left:${B.x0}px;top:${B.y+B.h+16}px;font:600 28px/1 Inter;color:${MID}`,'0');
+const bTick1=el('div','a in',W,`left:${B.x0+B.w-140}px;top:${B.y+B.h+16}px;width:140px;text-align:right;font:700 28px/1 Inter;color:${MID}`,'500GB');
+// big readout (right)
+const bNumWrap=el('div','a',W,`left:${B.x0+B.w-700}px;top:1665px;width:700px;height:170px;z-index:6`);
+const bLab=el('div','a jp',bNumWrap,`right:0;left:auto;top:0;font:700 30px/1 'Noto Sans JP';color:${SUB};white-space:nowrap`,'SSDの容量');
+const bNum=el('div','a in',bNumWrap,`right:0;left:auto;top:38px;font:900 128px/1 Inter;letter-spacing:-.04em;color:${INK};white-space:nowrap;text-align:right`,'0GB');
+// system stickers with leader lines
+const lead=document.createElementNS('http://www.w3.org/2000/svg','svg');lead.setAttribute('width',4400);lead.setAttribute('height',3800);lead.style.cssText='position:absolute;left:0;top:0;overflow:visible;z-index:7';W.appendChild(lead);
+const sv=(tag,attrs)=>{const e=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const k in attrs)e.setAttribute(k,attrs[k]);lead.appendChild(e);return e;};
+const ICONS=[{svg:osSVG,w:180,h:152,x:390,y:1740,r:-6,lab:'OS本体',s:.82},{svg:buoySVG,w:160,h:160,x:640,y:1722,r:5,lab:'回復領域',s:.82},{svg:updSVG,w:160,h:160,x:890,y:1740,r:-4,lab:'更新・一時ファイル',s:.82}];
+const ANCH=[395,1850];
+ICONS.forEach((o,i)=>{o.node=el('div','stk',W,`width:${o.w}px;height:${o.h}px;z-index:9`,o.svg);o.land=EV.icons[i];
+ o.line=sv('path',{d:`M ${o.x} ${o.y+50} L ${ANCH[0]+(i-1)*70} ${ANCH[1]-6}`,fill:'none',stroke:INK,'stroke-width':4,'stroke-linecap':'round',pathLength:1,'stroke-dasharray':'1 1'});
+ o.labE=el('div','a jp',W,`left:${o.x+72}px;top:${o.y-30}px;font:700 28px/1 'Noto Sans JP';color:${INK};white-space:nowrap;z-index:10`,o.lab);});
+const bSubE=el('div','a jp',W,`left:${B.x0}px;top:${B.y+B.h+70}px;font:900 50px/1.3 'Noto Sans JP';color:${INK};white-space:nowrap`,
+ `<span style="color:${OR}">→</span> 全ての容量を使えるわけではない`);
+const bFoot=el('div','a jp',W,`left:${B.x0}px;top:2250px;font:500 22px/1.5 'Noto Sans JP';color:${MID};white-space:nowrap`,'※ システム分はGB表記の換算差（約35GB）を含む目安。OS・機種・使い方により異なります。');
+U.push(t=>{
+ fadeUp(bK,t,EV.b_head);revealUp(bCap.i,t,EV.b_cap,96);
+ const g=bez(.3,0,.15,1)(P(t,EV.grow[0],EV.grow[1]-EV.grow[0]));bFill.style.transform=`scaleX(${g})`;
+ bBar.style.opacity=oC(P(t,EV.b_head+.1,.4));[bTick0,bTick1].forEach(e=>e.style.opacity=oC(P(t,EV.grow[1]-.1,.3)));
+ // system chunk slams in from the left edge
+ const ss=P(t,EV.sys_slam-.16,.16), sw=wob(t-EV.sys_slam,5,12);
+ bSys.style.transform=`translateX(${t<EV.sys_slam?-SYS_B*B.gb*(1-iQ(ss)):-8*sw}px)`;bSys.style.opacity=ss>0?1:0;
+ const us=oC(P(t,EV.sys_slam+.05,.35));bUse.style.opacity=us;bUse.style.transform=`translateX(${-8*sw*(1-us)}px)`;
+ fadeUp(bUseT,t,EV.usable,12,.35);
+ bBar.style.transform=`translateX(${t>=EV.sys_slam?10*wob(t-EV.sys_slam,6,14):0}px)`;
+ // readout: count up to 500, then down to ~410
+ let n=500*g,pre='',col=INK;
+ if(t>=EV.count_down[0]){const d=ioC(P(t,EV.count_down[0],EV.count_down[1]-EV.count_down[0]));n=lerp(500,410,d);pre='約';col=mixc('25313D','3D7BE0',d);}
+ const nf=Math.round(t*30)/30;bNum.innerHTML=`${pre?`<span class="jp" style="font:900 72px Noto Sans JP;vertical-align:28px;margin-right:6px">${pre}</span>`:''}${fmt(n)}<span style="font:900 64px Inter;margin-left:6px">GB</span>`;
+ bNum.style.color=col;bLab.textContent=t>=EV.count_down[0]?'実際に使える容量':'SSDの容量';bLab.style.color=t>=EV.count_down[0]?BLUE:SUB;
+ const ni=oC(P(t,EV.b_head+.2,.4));bNumWrap.style.opacity=ni;
+ bNum.style.transformOrigin='100% 70%';bNum.style.transform=`scale(${1+.05*wob(t-EV.count_down[1],4,9)*(t>=EV.count_down[1]?1:0)})`;
+ ICONS.forEach((o,i)=>{const sl=slap(t,o.land,.2,.4);o.node.style.opacity=sl.o;
+  o.node.style.transform=`translate(${o.x-o.w/2}px,${o.y-o.h/2-140*sl.lift}px) rotate(${o.r+sl.r*2}deg) scale(${o.s*sl.s})`;o.node.style.filter=shadow(sl.lift);
+  o.line.setAttribute('stroke-dashoffset',1-oC(P(t,o.land+.02,.22)));const lq=oC(P(t,o.land+.06,.25));o.labE.style.opacity=lq;o.labE.style.transform=`translateX(${(1-lq)*-16}px)`;});
+ fadeUp(bSubE,t,EV.b_sub,16,.4);bFoot.style.opacity=oC(P(t,EV.b_sub+.15,.4));
+});
+
+// =========================================================== C: 500GB overflows
+const Cc={x0:260,y:3000,w:1500,h:130,gb:3};
+const cK=kicker(Cc.x0,2640,'02　500GBの場合','500GB IS NOT ENOUGH');
+const cCap=maskLine(Cc.x0,2700,1500,96,`font:900 64px/1.4 'Noto Sans JP';color:${INK}`,'大作ゲームは、<span class="in" style="font-weight:900">1</span>本で<span style="color:'+OR+'">100GB超え</span>も当たり前');
+const cBar=el('div','a',W,`left:${Cc.x0}px;top:${Cc.y}px;width:${Cc.w}px;height:${Cc.h}px;border-radius:18px;background:${CARD};box-shadow:inset 0 0 0 3px ${LINE};z-index:5`);
+const cSys=el('div','a',cBar,`left:0;top:0;width:${SYS_B*Cc.gb}px;height:${Cc.h}px;border-radius:18px 0 0 18px;background:${INK};display:flex;align-items:center;justify-content:center;color:#fff`,
+ `<span class="jp" style="font:900 36px/1 'Noto Sans JP'">システム</span>`);
+const cFree=el('div','a jp',cBar,`left:${SYS_B*Cc.gb}px;top:0;width:${USE_B*Cc.gb}px;height:${Cc.h}px;display:flex;align-items:center;justify-content:center;color:${MID};font:700 36px/1 'Noto Sans JP';letter-spacing:.1em;white-space:nowrap`,'空き 410GB');
+const cEndTick=el('div','a in',W,`left:${Cc.x0+Cc.w-160}px;top:${Cc.y+Cc.h+16}px;width:160px;text-align:right;font:700 28px/1 Inter;color:${MID}`,'500GB');
+const GX0=Cc.x0+SYS_B*Cc.gb, GW=120*Cc.gb, FW=80*Cc.gb;
+const BLK=[0,1,2].map(i=>({x:GX0+i*GW,w:GW,land:EV.games[i],kind:'game',name:'ゲーム'+'ABC'[i]}));
+BLK.push({x:GX0+3*GW,w:FW,land:EV.files,kind:'files',name:'写真・動画'});
+const BAR_END=Cc.x0+Cc.w;
+BLK.forEach((b,i)=>{const over=Math.max(0,b.x+b.w-BAR_END), inn=b.w-over;
+ const bg=b.kind==='game'?BLUE:'#6E7F92';
+ b.node=el('div','stk',W,`left:0;top:0;width:${b.w-6}px;height:${Cc.h-12}px;border-radius:12px;z-index:${11+i};overflow:hidden;
+  background:${over?`linear-gradient(90deg,${bg} 0 ${inn-3}px,${OR} ${inn-3}px)`:bg};box-shadow:0 0 0 5px ${CARD}`,
+  `<div style="position:absolute;left:0;top:0;width:${b.w-6}px;height:${Cc.h-12}px;display:flex;align-items:center;justify-content:center;gap:14px;color:#fff">
+   ${b.kind==='game'?padSVG(76,'#fff',bg):`<svg viewBox="-72 -46 144 98" width="62" height="42">${folderGlyph}</svg>`}
+   <span style="display:flex;flex-direction:column;gap:6px"><span class="jp" style="font:900 ${b.kind==='game'?30:25}px/1 'Noto Sans JP'">${b.name}</span><span class="in" style="font:800 26px/1 Inter;opacity:.85">${b.kind==='game'?120:80}GB</span></span></div>
+   ${over?`<div style="position:absolute;left:${inn-3}px;top:0;width:${over+3}px;height:100%;background:repeating-linear-gradient(-45deg,rgba(255,255,255,.28) 0 10px,transparent 10px 22px)"></div>`:''}`);
+ b.over=over;});
+const cRead=el('div','a',W,`left:${Cc.x0+Cc.w-760}px;top:2820px;width:760px;height:160px;z-index:6`);
+const cLab=el('div','a jp',cRead,`right:0;left:auto;top:0;font:700 30px/1 'Noto Sans JP';color:${SUB};white-space:nowrap`,'使用量 ／ 使える容量');
+const cNum=el('div','a in',cRead,`right:0;left:auto;top:40px;font:900 112px/1 Inter;letter-spacing:-.04em;color:${INK};white-space:nowrap`,'');
+const stamp=el('div','stk jp',W,`left:0;top:0;padding:18px 40px 24px;border:10px solid ${OR};border-radius:20px;color:${OR};font:900 104px/1 'Noto Sans JP';white-space:nowrap;background:rgba(247,249,251,.92);z-index:30`,'容量不足！');
+const STAMP={x:1330,y:3370,r:-8};
+const cFoot=el('div','a jp',W,`left:${Cc.x0}px;top:3200px;font:500 26px/1.5 'Noto Sans JP';color:${SUB};white-space:nowrap`,'大作ゲーム1本 ＝ 約120GBで計算');
+U.push(t=>{
+ fadeUp(cK,t,EV.c_head);revealUp(cCap.i,t,EV.c_cap,96);
+ const bi=oC(P(t,EV.c_head,.4));[cBar,cEndTick].forEach(e=>e.style.opacity=bi);cFoot.style.opacity=oC(P(t,EV.c_cap+.2,.4));
+ let used=0;
+ BLK.forEach((b,i)=>{const p=P(t,b.land-.3,.3);const tgtX=b.x+3,tgtY=Cc.y+6;
+  if(p<=0){b.node.style.opacity=0;return;}b.node.style.opacity=1;
+  const e=iQ(p),arc=1-e;const w=t>=b.land?wob(t-b.land,4.5,11):0;
+  const x=tgtX+(i%2?60:-60)*arc, y=tgtY-330*arc, r=(i%2?-9:7)*arc+(-1.2*w), s=(1+.18*arc)*(1-.04*w);
+  b.node.style.transform=`translate(${x}px,${y}px) rotate(${r}deg) scale(${s})`;b.node.style.filter=shadow(arc*.9);
+  if(t>=b.land)used+=b.kind==='game'?120:80;});
+ const free=Math.max(0,410-used);cFree.textContent=free>0?`空き ${free}GB`:'';cFree.style.left=(SYS_B+used)*Cc.gb+'px';cFree.style.width=Math.max(0,free)*Cc.gb+'px';const nar=free*Cc.gb<300;cFree.style.fontSize=nar?'26px':'36px';cFree.style.letterSpacing=nar?'0':'.1em';
+ const over=used>410, ov=P(t,EV.files,.12);
+ cBar.style.boxShadow=`inset 0 0 0 ${over?6:3}px ${over?OR:'#CDD6DE'}`;
+ const sh=over?14*wob(t-EV.files,7,9):0;cBar.style.transform=`translateX(${sh}px)`;
+ cNum.innerHTML=`<span style="color:${over?OR:INK}">${used}</span><span style="color:${MID};font-size:64px;margin-left:10px">/ 410GB</span>`;
+ cRead.style.opacity=oC(P(t,EV.games[0]-.3,.3));
+ const lt=[...EV.games,EV.files].filter(v=>v<=t).pop();cNum.style.transformOrigin='100% 70%';cNum.style.transform=`scale(${1+.07*(lt?wob(t-lt,4,10):0)})`;
+ const st=slap(t,EV.stamp,.14,.9);stamp.style.opacity=st.o;
+ stamp.style.transform=`translate(${STAMP.x-330}px,${STAMP.y-80}px) rotate(${STAMP.r+st.r*2}deg) scale(${st.s})`;stamp.style.filter=shadow(st.lift,.2);
+});
+
+// =========================================================== D: comparison
+const D={x:2420,bx:2720,gb:.7};
+const dK=kicker(D.x,2040,'03　容量別に比べると','HOW MANY GAMES FIT?');
+const dCap=maskLine(D.x,2100,1700,96,`font:900 60px/1.4 'Noto Sans JP';color:${INK}`,'大作ゲーム（<span class="in">1</span>本 約<span class="in">120</span>GB）が何本入る？');
+const ROWS=[{cap:'500GB',total:500,sys:90,use:410,n:3},{cap:'1TB',total:1000,sys:120,use:880,n:7},{cap:'2TB',total:2000,sys:190,use:1810,n:15}];
+const ROWY=[2300,2530,2760];
+ROWS.forEach((r,i)=>{const y=ROWY[i];r.y=y;r.t0=EV.rows[i];
+ r.lab=el('div','a in',W,`left:${D.x}px;top:${y+6}px;font:900 64px/1 Inter;letter-spacing:-.03em;color:${INK};white-space:nowrap`,r.cap);
+ 
+ r.sysE=el('div','a',W,`left:${D.bx}px;top:${y}px;width:${r.sys*D.gb}px;height:76px;border-radius:12px 0 0 12px;background:${INK};transform-origin:0 50%`);
+ r.useE=el('div','a',W,`left:${D.bx+r.sys*D.gb}px;top:${y}px;width:${r.use*D.gb}px;height:76px;border-radius:0 12px 12px 0;background:${BLUE};transform-origin:0 50%`);
+ const inside=r.use*D.gb>400;
+ r.useT=el('div','a jp',W,`left:${inside?D.bx+r.sys*D.gb+r.use*D.gb-24-360:D.bx+r.total*D.gb+24}px;top:${y+16}px;width:360px;text-align:${inside?'right':'left'};font:700 34px/1 'Noto Sans JP';color:${inside?'#fff':BLUE};white-space:nowrap`,
+  `使える <span class="in" style="font-weight:900">約${r.use}GB</span>`);
+ if(!inside)r.useT.style.left=(D.bx+r.total*D.gb+24)+'px';
+ r.pads=[...Array(r.n)].map((_,k)=>el('div','stk',W,`width:44px;height:23px`,padSVG(44,INK,'#E9EEF2')));
+ r.cnt=el('div','a jp',W,`left:${D.bx+r.n*52+12}px;top:${y+92}px;font:900 40px/1 'Noto Sans JP';color:${INK};white-space:nowrap`,`約<span class="in" style="font-size:52px;margin:0 4px">${r.n}</span>本`);
+ r.badge=null;});
+[1,2].forEach((ri,k)=>{const r=ROWS[ri];r.badge=el('div','stk jp',W,`left:0;top:0;padding:10px 22px 12px;border-radius:12px;background:${OR};color:#fff;font:900 30px/1 'Noto Sans JP';white-space:nowrap;box-shadow:0 0 0 6px ${CARD};z-index:20`,'おすすめ');r.bland=EV.reco[k];});
+U.push(t=>{
+ fadeUp(dK,t,EV.d_head);revealUp(dCap.i,t,EV.d_cap,96);
+ const hero=oC(P(t,EV.reco[0]-.05,.3));
+ ROWS.forEach((r,i)=>{const g=bez(.3,0,.12,1)(P(t,r.t0,EV.row_dur));
+  const li=oC(P(t,EV.d_head+.25+i*.08,.35));r.lab.style.opacity=li*(i===0?1-.55*hero:1);r.lab.style.transform=`translateX(${(1-li)*-20}px)`;
+  
+  const sg=clamp(g*r.total/r.sys);r.sysE.style.transform=`scaleX(${sg})`;r.sysE.style.opacity=g>0?(i===0?1-.5*hero:1):0;
+  const ug=clamp((g*r.total-r.sys)/r.use);r.useE.style.transform=`scaleX(${ug})`;r.useE.style.opacity=ug>0?1:0;
+  r.useE.style.background=i===0?mixc('3D7BE0','A9BDD6',hero):BLUE;
+  const tq=oC(P(t,r.t0+EV.row_dur-.1,.3));r.useT.style.opacity=tq*(i===0?1-.5*hero:1);
+  r.pads.forEach((p,k)=>{const at=r.t0+EV.icon_delay+k*EV.icon_step,u=P(t,at,.2);p.style.opacity=u>0?(i===0?1-.5*hero:1):0;
+   p.style.transform=`translate(${D.bx+k*52}px,${r.y+100}px) scale(${u>0?oB(u,2.2):0})`;});
+  const cq=oC(P(t,r.t0+EV.icon_delay+r.n*EV.icon_step,.25));r.cnt.style.opacity=cq*(i===0?1-.55*hero:1);r.cnt.style.transform=`translateY(${(1-cq)*12}px)`;
+  if(r.badge){const sl=slap(t,r.bland,.18,.5);r.badge.style.opacity=sl.o;r.badge.style.transform=`translate(${D.x-6}px,${r.y-56-90*sl.lift}px) rotate(${-4+sl.r*2}deg) scale(${sl.s})`;r.badge.style.filter=shadow(sl.lift,.2);
+   const glow=oC(P(t,r.bland,.25));r.useE.style.boxShadow=glow>0?`0 0 0 ${5*glow}px ${CARD},0 0 0 ${9*glow}px ${OR}`:'none';}
+ });
+});
+
+// =========================================================== E: end card (screen space)
+const card=el('div','stk',HUD,`width:1560px;height:720px;border-radius:30px;background:${CARD};box-shadow:0 0 0 10px #fff`);
+const eK=kicker(110,96,'まとめ','CONCLUSION',card);
+const e1=maskLine(110,160,1400,130,`font:900 88px/1.4 'Noto Sans JP';color:${INK}`,'ゲームやファイルが多いなら',card);
+const e2=maskLine(110,286,1440,260,`font:900 104px/1 'Noto Sans JP';color:${INK};display:flex;align-items:baseline;gap:18px`,
+ `<span class="in" style="font:900 184px/1.12 Inter;letter-spacing:-.04em;color:${OR}">1TB・2TB</span><span>がおすすめ</span>`,card);
+const eRule=el('div','a',card,`left:110px;top:560px;width:1340px;height:3px;background:${INK};transform-origin:0 50%`);
+const eCap=el('div','a jp',card,`left:110px;top:590px;font:500 34px/1.55 'Noto Sans JP';color:${SUB};white-space:nowrap`,
+ '500GBはシステム分を引くと約410GB。大作ゲーム3本でほぼ満杯に。');
+U.push(t=>{
+ const sl=slap(t,EV.card,.22,.25),fl=oC(P(t,EV.card+.4,.6)),fy=Math.sin((t-EV.card)*1.8)*5*fl,fr=Math.sin((t-EV.card)*1.4+.6)*.35*fl;
+ card.style.opacity=sl.o;card.style.transform=`translate(${960-780}px,${540-360-fy-200*sl.lift}px) rotate(${-1.5+sl.r*2+fr}deg) scale(${sl.s})`;
+ card.style.filter=`drop-shadow(0 ${18+40*sl.lift}px ${40+40*sl.lift}px rgba(22,34,46,${.28-.08*sl.lift}))`;
+ fadeUp(eK,t,EV.card+.08);revealUp(e1.i,t,EV.end1,130);revealUp(e2.i,t,EV.end2,260,.55);
+ eRule.style.transform=`scaleX(${oQ(P(t,EV.marker_end[0],.5))})`;fadeUp(eCap,t,EV.end_cap,14);
+ DIM.style.background=`rgba(233,238,242,${(.5*oC(P(t,EV.pull[1]-.3,.5))).toFixed(3)})`;
+});
+
+// ---------- render ----------
+await Promise.all([
+ document.fonts.load("900 132px 'Noto Sans JP'",'SSDの容量全部は使えない'),document.fonts.load("700 32px 'Noto Sans JP'",'PCパーツ解説'),
+ document.fonts.load("500 30px 'Noto Sans JP'",'選べばいい'),document.fonts.load("900 128px Inter",'0123456789GBT'),
+ document.fonts.load("600 28px Inter",'WHY'),document.fonts.load("800 26px Inter",'120GB'),document.fonts.load("700 28px Inter",'500GB')]);
+await document.fonts.ready;
+window.renderAt=async t=>{
+ const c=camAt(t),J=jolt(t);
+ W.style.transform=`translate(${960-c.x*c.z}px,${540-c.y*c.z+J}px) scale(${c.z})`;
+ for(const f of U)f(t,c);
+};
+await window.renderAt(0);
+window.__ready=true;
+</script></body></html>
